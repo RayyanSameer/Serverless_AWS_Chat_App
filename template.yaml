@@ -1,28 +1,79 @@
+# yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Simple Serverless Chat App
+Metadata:
+  AWS::CloudFormation::Init:
+    configSets: {}
 
 Resources:
-  #Database
+  # Database
   ConnectionsTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
-      PrimaryKey: connectionId
-      Name: connectionId
-      Type: String
+      PrimaryKey:
+        Name: connectionId
+        Type: String
 
-  #WebSocket
+  # WebSocket API
   ChatWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: ChatWebSocket
-      ProtocolType: WebSocket
+      ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
+
+  # Deployment Stage (WebSockets NEED this to work)
+  ChatApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ChatWebSocketApi
+      StageName: Prod
+      AutoDeploy: true
+
+  # Connect Lambda
+  OnConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConnectionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+      Events:
+        ConnectEvent:
+          Type: ApiV2
+          Properties:
+            ApiId: !Ref ChatWebSocketApi
+            RouteKey: $connect
+
+  # Disconnect Lambda
+  OnDisConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: disconnect.lambda_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConnectionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+      Events:
+        DisconnectEvent:
+          Type: ApiV2
+          Properties:
+            ApiId: !Ref ChatWebSocketApi
+            RouteKey: $disconnect
 
 Outputs:
   WebSocketURL:
     Description: "The WSS Protocol URL"
     Value: !Sub "wss://${ChatWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-
-    
-
