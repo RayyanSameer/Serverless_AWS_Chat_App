@@ -1,13 +1,8 @@
-# yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Simple Serverless Chat App
-Metadata:
-  AWS::CloudFormation::Init:
-    configSets: {}
 
 Resources:
-  # Database
   ConnectionsTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
@@ -15,7 +10,6 @@ Resources:
         Name: connectionId
         Type: String
 
-  # WebSocket API
   ChatWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -23,7 +17,6 @@ Resources:
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
 
-  # Deployment Stage (WebSockets NEED this to work)
   ChatApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -31,14 +24,12 @@ Resources:
       StageName: Prod
       AutoDeploy: true
 
-  # Connect Lambda
   OnConnectFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Handler: app.lambda_handler
       Runtime: python3.12
-      MemorySize: 128
       Environment:
         Variables:
           TABLE_NAME: !Ref ConnectionsTable
@@ -52,14 +43,12 @@ Resources:
             ApiId: !Ref ChatWebSocketApi
             RouteKey: $connect
 
-  # Disconnect Lambda
-  OnDisConnectFunction:
+  OnDisconnectFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Handler: disconnect.lambda_handler
       Runtime: python3.12
-      MemorySize: 128
       Environment:
         Variables:
           TABLE_NAME: !Ref ConnectionsTable
