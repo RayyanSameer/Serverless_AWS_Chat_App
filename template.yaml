@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Simple Serverless Chat App
+
+Resources:
+  #Database
+  ConnectionsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: connectionId
+      Name: connectionId
+      Type: String
+
+  #WebSocket
+  ChatWebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ChatWebSocket
+      ProtocolType: WebSocket
+      RouteSelectionExpression: "$request.body.action"
+
+Outputs:
+  WebSocketURL:
+    Description: "The WSS Protocol URL"
+    Value: !Sub "wss://${ChatWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+    
+

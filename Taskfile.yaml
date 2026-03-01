@@ -1,0 +1,7 @@
+version: '3'
+
+tasks:
+  deploy:
+    cmds:
+      - sam build
+      - sam deploy --guided

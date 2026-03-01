@@ -1,0 +1,10 @@
+# AWS SAM / Installation junk
+.aws-sam/
+aws-sam-cli-src/
+sam-installation/
+aws-sam-cli.zip
+dist/
+
+# OS/System files
+.DS_Store
+Thumbs.dbs
