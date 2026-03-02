@@ -3,6 +3,10 @@ import boto3
 import os
 import time
 
+
+# Force Deploy 1
+print("--- SEND MESSAGE TRIGGERED ---")
+
 # Initialize the resources
 TABLE_NAME = os.environ.get('TABLE_NAME')
 MESSAGES_TABLE = os.environ.get('MESSAGES_TABLE')
