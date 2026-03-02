@@ -5,9 +5,12 @@ import time
 
 
 # Force Deploy 1
+# Force Deploy 2
+# Force Deploy 3 
+
 print("--- SEND MESSAGE TRIGGERED ---")
 
-# Initialize the resources
+
 TABLE_NAME = os.environ.get('TABLE_NAME')
 MESSAGES_TABLE = os.environ.get('MESSAGES_TABLE')
 
@@ -48,7 +51,7 @@ def lambda_handler(event, context):
                     })
                 )
             except gatewayapi.exceptions.GoneException:
-                # If a user disconnected without us knowing, clean up the DB
+                
                 conn_table.delete_item(Key={'connectionId': target_id})
 
         return {'statusCode': 200}

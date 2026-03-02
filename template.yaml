@@ -1,32 +1,65 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Simple Serverless Chat App
+Description: Serverless Chat App with Lambda Authorizer
 
 Resources:
-  # --- DATABASE LAYER ---
+  #db
   ConnectionsTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
-      PrimaryKey:
-        Name: connectionId
-        Type: String
+      PrimaryKey: {Name: connectionId, Type: String}
 
   MessagesTable:
     Type: AWS::DynamoDB::Table
     Properties:
       AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: N
+        - {AttributeName: id, AttributeType: S}
+        - {AttributeName: timestamp, AttributeType: N}
       KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-        - AttributeName: timestamp
-          KeyType: RANGE
+        - {AttributeName: id, KeyType: HASH}
+        - {AttributeName: timestamp, KeyType: RANGE}
       BillingMode: PAY_PER_REQUEST
 
-  # --- API LAYER ---
+  # --id
+  ChatUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ChatAppUsers
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+
+  ChatUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ChatAppClient
+      UserPoolId: !Ref ChatUserPool
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+
+  #auth_xheck
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: auth.lambda_handler
+      Runtime: python3.12
+
+  AuthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthFunction
+      Principal: apigateway.amazonaws.com
+
+  ChatApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      Name: LambdaAuthorizer
+      ApiId: !Ref ChatWebSocketApi
+      AuthorizerType: REQUEST
+      IdentitySource: 
+        - "route.request.querystring.token"  # Added 'route.' here
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations"
+  #api
   ChatWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -41,26 +74,31 @@ Resources:
       StageName: Prod
       AutoDeploy: true
 
-  # --- ON CONNECT ---
-  OnConnectFunction:
-    Type: AWS::Serverless::Function
+  #routes
+  OnConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
     Properties:
-      CodeUri: src/
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref ConnectionsTable
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
+      ApiId: !Ref ChatWebSocketApi
+      RouteKey: $connect
+      Target: !Sub "integrations/${OnConnectIntegration}"
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ChatApiAuthorizer
 
-  OnConnectPermission:
-    Type: AWS::Lambda::Permission
+  SendMessageRoute:
+    Type: AWS::ApiGatewayV2::Route
     Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnConnectFunction
-      Principal: apigateway.amazonaws.com
+      ApiId: !Ref ChatWebSocketApi
+      RouteKey: sendMessage
+      Target: !Sub "integrations/${SendMessageIntegration}"
 
+  OnDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ChatWebSocketApi
+      RouteKey: $disconnect
+      Target: !Sub "integrations/${OnDisconnectIntegration}"
+
+  #integration
   OnConnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -68,14 +106,31 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations"
 
-  OnConnectRoute:
-    Type: AWS::ApiGatewayV2::Route
+  SendMessageIntegration:
+    Type: AWS::ApiGatewayV2::Integration
     Properties:
       ApiId: !Ref ChatWebSocketApi
-      RouteKey: $connect
-      Target: !Sub "integrations/${OnConnectIntegration}"
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageFunction.Arn}/invocations"
 
-  # --- SEND MESSAGE ---
+  OnDisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ChatWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations"
+
+  #func
+  OnConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Environment:
+        Variables: {TABLE_NAME: !Ref ConnectionsTable}
+      Policies: [DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}]
+
   SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -87,35 +142,13 @@ Resources:
           TABLE_NAME: !Ref ConnectionsTable
           MESSAGES_TABLE: !Ref MessagesTable
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref MessagesTable }
+        - DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref MessagesTable}
         - Statement:
             - Effect: Allow
               Action: 'execute-api:ManageConnections'
               Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChatWebSocketApi}/*"
 
-  SendMessagePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref SendMessageFunction
-      Principal: apigateway.amazonaws.com
-
-  SendMessageIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref ChatWebSocketApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageFunction.Arn}/invocations"
-
-  SendMessageRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ChatWebSocketApi
-      RouteKey: sendMessage
-      Target: !Sub "integrations/${SendMessageIntegration}"
-
-  # --- ON DISCONNECT ---
   OnDisconnectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -123,32 +156,13 @@ Resources:
       Handler: disconnect.lambda_handler
       Runtime: python3.12
       Environment:
-        Variables:
-          TABLE_NAME: !Ref ConnectionsTable
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
-
-  OnDisconnectPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnDisconnectFunction
-      Principal: apigateway.amazonaws.com
-
-  OnDisconnectIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref ChatWebSocketApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations"
-
-  OnDisconnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ChatWebSocketApi
-      RouteKey: $disconnect
-      Target: !Sub "integrations/${OnDisconnectIntegration}"
+        Variables: {TABLE_NAME: !Ref ConnectionsTable}
+      Policies: [DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}]
 
 Outputs:
   WebSocketURL:
     Value: !Sub "wss://${ChatWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  UserPoolId:
+    Value: !Ref ChatUserPool
+  ClientId:
+    Value: !Ref ChatUserPoolClient
