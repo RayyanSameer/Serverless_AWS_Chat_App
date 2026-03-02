@@ -4,6 +4,7 @@ Description: Serverless Chat App with Lambda Authorizer
 
 Resources:
 
+
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -32,7 +33,6 @@ Resources:
             - {AttributeName: userId, KeyType: HASH}
             - {AttributeName: timestamp, KeyType: RANGE}
           Projection: {ProjectionType: ALL}
-
 
   ChatUserPool:
     Type: AWS::Cognito::UserPool
@@ -69,17 +69,6 @@ Resources:
       FunctionName: !Ref AuthFunction
       Principal: apigateway.amazonaws.com
 
-  ChatApiAuthorizer:
-    Type: AWS::ApiGatewayV2::Authorizer
-    Properties:
-      Name: LambdaAuthorizer
-      ApiId: !Ref ChatWebSocketApi
-      AuthorizerType: REQUEST
-      AuthorizerPayloadFormatVersion: "1.0"
-      IdentitySource:
-        - "route.request.querystring.token"
-      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations"
-
   ChatWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -93,6 +82,16 @@ Resources:
       ApiId: !Ref ChatWebSocketApi
       StageName: Prod
       AutoDeploy: true
+
+  ChatApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      Name: LambdaAuthorizer
+      ApiId: !Ref ChatWebSocketApi
+      AuthorizerType: REQUEST
+      IdentitySource:
+        - "route.request.querystring.token"
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations"
 
   OnConnectRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -117,7 +116,7 @@ Resources:
       RouteKey: $disconnect
       Target: !Sub "integrations/${OnDisconnectIntegration}"
 
-  # --- INTEGRATIONS ---
+ 
   OnConnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -139,7 +138,7 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations"
 
-  # --- FUNCTIONS ---
+
   OnConnectFunction:
     Type: AWS::Serverless::Function
     Properties:
