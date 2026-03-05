@@ -46,19 +46,43 @@ def lambda_handler(event, context):
             endpoint_url=f'https://{domain}/{stage}'
         )
 
-        connections = conn_table.scan(
-            ProjectionExpression='connectionId'
-        ).get('Items', [])
+        #Pagination is required here to load all connections
 
-        payload = json.dumps({
+        #Psudocode for this section :
+        # 1.Create an empty list to collect all connections
+        # 2.Call scan
+        # 3.Add the results to your list
+        # 4.Check if LastEvaluatedKey exists in the response
+        # 5.If yes — call scan again, passing that key as ExclusiveStartKey, go to step 3
+        # 6.If no — you're done, use the list   
+
+        #Empty list 
+        all_connections = []
+        response = conn_table.scan(ProjectionExpression='connectionId')
+
+        while True:
+            all_connections.extend(response.get('Items', []))
+    
+            if 'LastEvaluatedKey' not in response:
+                break
+      
+    
+            response = conn_table.scan(
+            ProjectionExpression='connectionId',
+            ExclusiveStartKey=response['LastEvaluatedKey']
+    )  
+        
+
+
+            payload = json.dumps({
             'sender': email or user_id,
             'message': message,
             'timestamp': int(time.time())
         })
 
-        stale = []
-        for conn in connections:
-            target_id = conn['connectionId']
+            stale = []
+            for conn in all_connections:
+                target_id = conn['connectionId']
             try:
                 gateway.post_to_connection(ConnectionId=target_id, Data=payload)
             except gateway.exceptions.GoneException:
@@ -67,12 +91,12 @@ def lambda_handler(event, context):
                 print(f"Failed to send to {target_id}: {e}")
 
        
-        for stale_id in stale:
-            conn_table.delete_item(Key={'connectionId': stale_id})
-            print(f"Cleaned stale connection: {stale_id}")
+            for stale_id in stale:
+                conn_table.delete_item(Key={'connectionId': stale_id})
+                print(f"Cleaned stale connection: {stale_id}")
 
-        print(f"Message from {user_id} | sent to {len(connections)} | cleaned {len(stale)} stale")
-        return {'statusCode': 200, 'body': 'Message sent.'}
+            print(f"Message from {user_id} | sent to {len(connections)} | cleaned {len(stale)} stale")
+            return {'statusCode': 200, 'body': 'Message sent.'}
 
     except Exception as e:
         print(f"Error in send_message: {e}")
