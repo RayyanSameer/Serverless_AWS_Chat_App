@@ -76,6 +76,13 @@ Resources:
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
 
+  ChatHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ChatHttpApi
+      ProtocolType: HTTP
+
+
   ChatApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -150,6 +157,25 @@ Resources:
           TABLE_NAME: !Ref ConnectionsTable
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}
+
+  GetMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get_messages.lambda_handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          MESSAGES_TABLE: !Ref MessagesTable
+      Policies:
+        - DynamoDBReadPolicy: {TableName: !Ref MessagesTable}  
+      Events:
+        GetMessages:
+          Type: HttpApi
+          Properties:
+            Path: /messages
+            Method: get
+            ApiId: !Ref ChatHttpApi    
 
   OnConnectPermission:
     Type: AWS::Lambda::Permission
