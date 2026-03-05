@@ -9,9 +9,18 @@ APP_CLIENT_ID = os.environ['APP_CLIENT_ID']
 JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
 
 
+
+
 def get_jwks():
-    with urllib.request.urlopen(JWKS_URL) as response:
-        return json.loads(response.read())
+    global _jwks_cache
+    if _jwks_cache == None:
+        with urllib.request.urlopen     (JWKS_URL) as response:
+            jwk =  json.loads(response.read())
+            _jwks_cache= jwk
+            return _jwks_cache
+    else:
+        return _jwks_cache    
+
 
 
 def verify_token(token):

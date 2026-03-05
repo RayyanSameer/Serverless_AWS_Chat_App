@@ -12,6 +12,8 @@ conn_table = dynamodb.Table(TABLE_NAME)
 msg_table = dynamodb.Table(MESSAGES_TABLE)
 
 
+
+
 def lambda_handler(event, context):
     try:
         body = json.loads(event.get('body') or '{}')
