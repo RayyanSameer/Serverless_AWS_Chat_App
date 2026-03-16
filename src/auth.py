@@ -8,7 +8,11 @@ USER_POOL_ID = os.environ['USER_POOL_ID']
 APP_CLIENT_ID = os.environ['APP_CLIENT_ID']
 JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
 
+#This is the meat of the authentication logic 
+# it starts by caching the jwk as a global varaiable 
+# Then performs a validation of said JWT through Key and Key ID validation
 
+#When someone tries to connect to the chat, they hand over a JWT token. This file checks if that token is real and valid. If yes  Allow. If no — Deny. That's it.
 
 
 def get_jwks():

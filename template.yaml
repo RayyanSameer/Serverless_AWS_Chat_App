@@ -1,10 +1,32 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Serverless Chat App with Lambda Authorizer
+Description: Serverless Chat App with Lambda Authorizer\
+
+
+
+#This is the file that defines all the infrastructure behind this chat application
+#Overview of Parts :
+# 1. A DynamoDB with a Connections table (Logs if you are connected or not)
+# 2. it's also got a Messages table with a searchable hash index (So we can search as well as secure the messages )
+# 3. AWS Cognito Userpool : To store and authenticate user credentials it uses an obsured userpool with a UserPool CLient 
+# 4. Handler files : The app runs via handlers to execute lambda functions (auth.py)
+
+# 5.Lambda Functions , the heart of the execution : it has two funtions called AuthFunction and Auth Permission
+# The AuthFunction Lambda invokes auth.py to generate and verify JWT Token.
+# There's also functions to get and send messages and perform a search , connect and disconnect each with their own handler files 
+
+# 6. Websocket and HTTP : These two handle diffeent things simultaneously, The HTTP Chat API takes care of the files like html , react , etc
+# Meanwhile the Websocket works like a walkie talkie keeping an open connection between the chat people .
+
+# 7. Routes and Integrations : These define the route API gateway uses 
+# 8. Websocket URL Component 
+
+
+#I chose defining my infra in a yaml file rather than terraform because SAM is purpose-built for serverless. It understands Lambda, API Gateway, and DynamoDB natively and generates the boilerplate CloudFormation for you. What would be 300 lines of Terraform is 80 lines of SAM YAML. so yeah it's easier to work with in this case 
 
 Resources:
 
-
+  # Maintains a connection ID and a hash key value , good for searches and finding people 
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -16,7 +38,7 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
-
+#Holds messages with timestamps 
   MessagesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -33,7 +55,7 @@ Resources:
             - {AttributeName: userId, KeyType: HASH}
             - {AttributeName: timestamp, KeyType: RANGE}
           Projection: {ProjectionType: ALL}
-
+# User details live here 
   ChatUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
@@ -50,7 +72,7 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-
+#This function calls the auth.py handler function to generate as well as authenticate or rather validate JWT
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -68,14 +90,14 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref AuthFunction
       Principal: apigateway.amazonaws.com
-
+# The Websocket that acts as a walkie talkie allowing users to open chat 
   ChatWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: ChatWebSocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
-
+# Allows HTTP Web Content to be served 
   ChatHttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -157,7 +179,7 @@ Resources:
           TABLE_NAME: !Ref ConnectionsTable
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}
-
+# Fetches the messages ealier 
   GetMessagesFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -183,7 +205,7 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref OnConnectFunction
       Principal: apigateway.amazonaws.com
-
+# This bad boy takes care of sending the actual message to the person on the other end + the DB for persistent storage 
   SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -221,7 +243,7 @@ Resources:
           TABLE_NAME: !Ref ConnectionsTable
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref ConnectionsTable}
-
+# Allows the disconnect function through the API gateway
   OnDisconnectPermission:
     Type: AWS::Lambda::Permission
     Properties:

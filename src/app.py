@@ -34,3 +34,6 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error saving connection {connection_id}: {e}")
         return {'statusCode': 500, 'body': 'Failed to connect.'}
+    
+
+    #This file handles "DId you connect yet ?"
