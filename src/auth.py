@@ -1,7 +1,13 @@
+
+
 import os
 import json
 import urllib.request
 from jose import jwk, jwt
+
+
+_jwks_cache = None #Module Level var :) 
+
 
 REGION = os.environ['AWS_REGION']
 USER_POOL_ID = os.environ['USER_POOL_ID']

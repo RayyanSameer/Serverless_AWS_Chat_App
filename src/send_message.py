@@ -5,7 +5,7 @@ import os
 from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
-conn_table = dynamodb.Table(os.environ['CONNECTIONS_TABLE'])
+conn_table = dynamodb.Table(os.environ.get('TABLE_NAME'))
 
 def lambda_handler(event, context):
     # Parse incoming WebSocket message
