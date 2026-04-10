@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL — Serverless Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ── RESET & VARIABLES ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0c0c0c;
+    --surface:  #141414;
+    --panel:    #1a1a1a;
+    --border:   #2a2a2a;
+    --accent:   #e8ff47;
+    --accent2:  #47ffe8;
+    --dim:      #3a3a3a;
+    --muted:    #555;
+    --text:     #e0e0e0;
+    --text-dim: #888;
+    --danger:   #ff4747;
+    --mono:     'JetBrains Mono', monospace;
+    --display:  'Syne', sans-serif;
+    --radius:   4px;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── SCAN LINE OVERLAY ─────────────────────────────────────── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── LAYOUT ────────────────────────────────────────────────── */
+  #app { height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── TOP BAR ───────────────────────────────────────────────── */
+  #topbar {
+    height: 48px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .logo {
+    font-family: var(--display);
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .conn-indicator {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .conn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .conn-dot.live { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .conn-dot.error { background: var(--danger); }
+  #user-badge {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+  #logout-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+    display: none;
+  }
+  #logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── MAIN AREA ─────────────────────────────────────────────── */
+  #main { flex: 1; display: flex; overflow: hidden; }
+
+  /* ── AUTH SCREEN ───────────────────────────────────────────── */
+  #auth-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse 60% 50% at 30% 50%, rgba(232,255,71,0.04) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 80% 30%, rgba(71,255,232,0.03) 0%, transparent 70%),
+      var(--bg);
+  }
+
+  .auth-box {
+    width: 420px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .auth-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), transparent);
+  }
+
+  .auth-title {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .auth-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 32px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .tab-row {
+    display: flex;
+    gap: 0;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 0;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .field input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    border-radius: var(--radius);
+    transition: border-color 0.15s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--muted); }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: #0c0c0c;
+    border: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 12px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    margin-top: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary:hover { background: #f5ff6e; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { background: var(--dim); color: var(--muted); cursor: not-allowed; transform: none; }
+
+  .auth-msg {
+    margin-top: 14px;
+    font-size: 11px;
+    text-align: center;
+    min-height: 16px;
+    transition: color 0.2s;
+  }
+  .auth-msg.error { color: var(--danger); }
+  .auth-msg.success { color: var(--accent2); }
+  .auth-msg.info { color: var(--text-dim); }
+
+  /* ── CHAT SCREEN ───────────────────────────────────────────── */
+  #chat-screen {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* messages area */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    display: flex;
+    gap: 12px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    transition: background 0.1s;
+    animation: msgIn 0.2s ease;
+  }
+  .msg:hover { background: rgba(255,255,255,0.02); }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.own { flex-direction: row-reverse; }
+
+  .msg-avatar {
+    width: 28px; height: 28px;
+    border-radius: 2px;
+    background: var(--dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-family: var(--display);
+  }
+  .msg.own .msg-avatar { color: var(--accent2); }
+
+  .msg-body { flex: 1; max-width: 70%; }
+  .msg.own .msg-body { align-items: flex-end; display: flex; flex-direction: column; }
+
+  .msg-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .msg.own .msg-meta { flex-direction: row-reverse; }
+
+  .msg-sender {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+  .msg.own .msg-sender { color: var(--accent2); }
+
+  .msg-time {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .msg-text {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+    word-break: break-word;
+    display: inline-block;
+  }
+  .msg.own .msg-text {
+    background: rgba(232,255,71,0.07);
+    border-color: rgba(232,255,71,0.2);
+  }
+
+  .msg-divider {
+    text-align: center;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .msg-divider::before, .msg-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* system messages */
+  .sys-msg {
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 4px 0;
+    font-style: italic;
+  }
+  .sys-msg.connected { color: var(--accent); }
+  .sys-msg.disconnected { color: var(--danger); }
+
+  /* ── INPUT BAR ─────────────────────────────────────────────── */
+  #input-bar {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #msg-prompt {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  #msg-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    caret-color: var(--accent);
+  }
+  #msg-input::placeholder { color: var(--dim); }
+  #msg-input:disabled { cursor: not-allowed; }
+
+  #send-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  #send-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* char counter */
+  #char-count {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #char-count.warn { color: var(--danger); }
+
+  /* ── STATUS BAR ────────────────────────────────────────────── */
+  #statusbar {
+    height: 24px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+  .status-item {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-item span { color: var(--text-dim); }
+
+  /* ── SPINNER ───────────────────────────────────────────────── */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TYPING INDICATOR ──────────────────────────────────────── */
+  #typing-row {
+    padding: 0 24px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    min-height: 20px;
+    font-style: italic;
+  }
+
+  /* ── EMPTY STATE ───────────────────────────────────────────── */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+  }
+  .empty-icon {
+    font-size: 32px;
+    opacity: 0.3;
+    margin-bottom: 8px;
+  }
+  .empty-title {
+    font-family: var(--display);
+    font-size: 16px;
+    color: var(--dim);
+  }
+  .empty-sub { font-size: 11px; }
+
+  /* ── TOAST ─────────────────────────────────────────────────── */
+  #toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 1000;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+  #toast.success { border-color: var(--accent); color: var(--accent); }
+
+  /* ── CONFIG MODAL ──────────────────────────────────────────── */
+  #config-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  #config-modal.open { display: flex; }
+  .config-box {
+    width: 500px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    position: relative;
+  }
+  .config-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent2), transparent);
+  }
+  .config-title {
+    font-family: var(--display);
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .config-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+  .config-btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .btn-secondary {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .btn-secondary:hover { border-color: var(--text-dim); }
+
+  /* ── CONFIG GEAR ───────────────────────────────────────────── */
+  #config-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 14px;
+    width: 28px; height: 28px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    margin-left: auto;
+  }
+  #config-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">SIGNAL <span>// serverless chat</span></div>
+    <div id="user-badge" style="display:none"></div>
+    <button id="config-btn" onclick="openConfig()" title="Configure endpoints">⚙</button>
+    <button id="logout-btn" onclick="logout()">disconnect</button>
+    <div class="conn-indicator">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-status">offline</span>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen">
+      <div class="auth-box">
+        <div class="auth-title">Signal.</div>
+        <div class="auth-subtitle">Serverless · Real-time · AWS</div>
+
+        <div class="tab-row">
+          <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Login</button>
+          <button class="tab-btn" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+
+        <!-- LOGIN FORM -->
+        <div id="form-login">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+          </div>
+          <button class="btn-primary" id="login-btn" onclick="handleLogin()">Login →</button>
+          <div class="auth-msg info" id="login-msg"></div>
+        </div>
+
+        <!-- SIGNUP FORM -->
+        <div id="form-signup" style="display:none">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="signup-email" placeholder="you@example.com">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="signup-password" placeholder="Min 8 chars, 1 number, 1 uppercase">
+          </div>
+          <button class="btn-primary" id="signup-btn" onclick="handleSignup()">Create Account →</button>
+          <div class="auth-msg" id="signup-msg"></div>
+        </div>
+
+        <!-- VERIFY FORM -->
+        <div id="form-verify" style="display:none">
+          <div class="field">
+            <label>Verification Code</label>
+            <input type="text" id="verify-code" placeholder="Check your email" maxlength="6">
+          </div>
+          <button class="btn-primary" id="verify-btn" onclick="handleVerify()">Verify →</button>
+          <div class="auth-msg info" id="verify-msg">Enter the code sent to your email.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT SCREEN -->
+    <div id="chat-screen">
+      <div id="messages">
+        <div id="empty-state">
+          <div class="empty-icon">⌨</div>
+          <div class="empty-title">No messages yet.</div>
+          <div class="empty-sub">Be the first to say something.</div>
+        </div>
+      </div>
+      <div id="typing-row"></div>
+      <div id="input-bar">
+        <div id="msg-prompt">›</div>
+        <input type="text" id="msg-input" placeholder="type a message..." maxlength="500" disabled>
+        <span id="char-count"></span>
+        <button id="send-btn" onclick="sendMessage()" disabled>send</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- STATUS BAR -->
+  <div id="statusbar">
+    <div class="status-item">SIGNAL <span>v1.0</span></div>
+    <div class="status-item">region <span id="stat-region">—</span></div>
+    <div class="status-item">messages <span id="stat-msgs">0</span></div>
+    <div class="status-item">latency <span id="stat-latency">—</span></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- CONFIG MODAL -->
+<div id="config-modal">
+  <div class="config-box">
+    <div class="config-title">Endpoint Config</div>
+    <div class="config-subtitle">Connect this frontend to your deployed AWS stack.</div>
+
+    <div class="field">
+      <label>WebSocket URL</label>
+      <input type="text" id="cfg-ws" placeholder="wss://xxxxxx.execute-api.region.amazonaws.com/Prod">
+    </div>
+    <div class="field">
+      <label>Cognito User Pool ID</label>
+      <input type="text" id="cfg-pool" placeholder="ap-south-1_xxxxxxxxx">
+    </div>
+    <div class="field">
+      <label>Cognito Client ID</label>
+      <input type="text" id="cfg-client" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxx">
+    </div>
+    <div class="field">
+      <label>AWS Region</label>
+      <input type="text" id="cfg-region" placeholder="ap-south-1">
+    </div>
+    <div class="field">
+      <label>Messages Endpoint (optional)</label>
+      <input type="text" id="cfg-msgs" placeholder="https://xxxxxx.execute-api.region.amazonaws.com/messages">
+    </div>
+
+    <div class="config-btn-row">
+      <button class="btn-secondary" onclick="closeConfig()">Cancel</button>
+      <button class="btn-primary" style="flex:2" onclick="saveConfig()">Save & Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+let CONFIG = {
+  wsUrl:     localStorage.getItem('cfg_ws')     || '',
+  poolId:    localStorage.getItem('cfg_pool')   || '',
+  clientId:  localStorage.getItem('cfg_client') || '',
+  region:    localStorage.getItem('cfg_region') || 'ap-south-1',
+  msgsUrl:   localStorage.getItem('cfg_msgs')   || '',
+};
+
+function openConfig() {
+  document.getElementById('cfg-ws').value     = CONFIG.wsUrl;
+  document.getElementById('cfg-pool').value   = CONFIG.poolId;
+  document.getElementById('cfg-client').value = CONFIG.clientId;
+  document.getElementById('cfg-region').value = CONFIG.region;
+  document.getElementById('cfg-msgs').value   = CONFIG.msgsUrl;
+  document.getElementById('config-modal').classList.add('open');
+}
+function closeConfig() { document.getElementById('config-modal').classList.remove('open'); }
+function saveConfig() {
+  CONFIG.wsUrl    = document.getElementById('cfg-ws').value.trim();
+  CONFIG.poolId   = document.getElementById('cfg-pool').value.trim();
+  CONFIG.clientId = document.getElementById('cfg-client').value.trim();
+  CONFIG.region   = document.getElementById('cfg-region').value.trim() || 'ap-south-1';
+  CONFIG.msgsUrl  = document.getElementById('cfg-msgs').value.trim();
+  localStorage.setItem('cfg_ws',     CONFIG.wsUrl);
+  localStorage.setItem('cfg_pool',   CONFIG.poolId);
+  localStorage.setItem('cfg_client', CONFIG.clientId);
+  localStorage.setItem('cfg_region', CONFIG.region);
+  localStorage.setItem('cfg_msgs',   CONFIG.msgsUrl);
+  document.getElementById('stat-region').textContent = CONFIG.region;
+  closeConfig();
+  toast('Config saved.', 'success');
+}
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let ws = null;
+let token = null;
+let currentUser = null;
+let msgCount = 0;
+let pendingSignupEmail = null;
+let pingStart = null;
+
+// ── COGNITO AUTH ───────────────────────────────────────────────────────────
+// Uses Amazon Cognito hosted API directly — no AWS SDK needed
+const cognitoBase = () =>
+  `https://cognito-idp.${CONFIG.region}.amazonaws.com/`;
+
+async function cognitoRequest(action, body) {
+  const res = await fetch(cognitoBase(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw data;
+  return data;
+}
+
+// ── TAB SWITCH ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+  document.getElementById('form-login').style.display  = tab === 'login'  ? 'block' : 'none';
+  document.getElementById('form-signup').style.display = tab === 'signup' ? 'block' : 'none';
+  document.getElementById('form-verify').style.display = 'none';
+}
+
+// ── SIGN UP ────────────────────────────────────────────────────────────────
+async function handleSignup() {
+  if (!checkConfig()) return;
+  const email    = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  const msg      = document.getElementById('signup-msg');
+  const btn      = document.getElementById('signup-btn');
+
+  if (!email || !password) { setMsg(msg, 'Fill in all fields.', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  setMsg(msg, '', '');
+
+  try {
+    await cognitoRequest('SignUp', {
+      ClientId: CONFIG.clientId,
+      Username: email,
+      Password: password,
+      UserAttributes: [{ Name: 'email', Value: email }],
+    });
+    pendingSignupEmail = email;
+    document.getElementById('form-signup').style.display = 'none';
+    document.getElementById('form-verify').style.display = 'block';
+    document.querySelector('.tab-row').style.display = 'none';
+    toast('Verification code sent to your email.', 'success');
+  } catch (e) {
+    setMsg(msg, e.message || 'Sign up failed.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Account →';
+  }
+}
+
+async function handleVerify() {
+  if (!pendingSignupEmail) return;
+  const code = document.getElementById('verify-code').value.trim();
+  const msg  = document.getElementById('verify-msg');
+  const btn  = document.getElementById('verify-btn');
+  if (!code) { setMsg(msg, 'Enter the code.', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    await cognitoRequest('ConfirmSignUp', {
+      ClientId: CONFIG.clientId,
+      Username: pendingSignupEmail,
+      ConfirmationCode: code,
+    });
+    toast('Account verified! You can now log in.', 'success');
+    document.querySelector('.tab-row').style.display = 'flex';
+    pendingSignupEmail = null;
+    switchTab('login');
+    document.getElementById('login-email').value = document.getElementById('signup-email').value;
+  } catch (e) {
+    setMsg(msg, e.message || 'Verification failed.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verify →';
+  }
+}
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────
+async function handleLogin() {
+  if (!checkConfig()) return;
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const msg      = document.getElementById('login-msg');
+  const btn      = document.getElementById('login-btn');
+
+  if (!email || !password) { setMsg(msg, 'Fill in all fields.', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  setMsg(msg, 'Authenticating...', 'info');
+
+  try {
+    const data = await cognitoRequest('InitiateAuth', {
+      AuthFlow: 'USER_PASSWORD_AUTH',
+      ClientId: CONFIG.clientId,
+      AuthParameters: { USERNAME: email, PASSWORD: password },
+    });
+
+    token       = data.AuthenticationResult.IdToken;
+    currentUser = email;
+
+    document.getElementById('user-badge').textContent = email;
+    document.getElementById('user-badge').style.display = 'block';
+    document.getElementById('logout-btn').style.display = 'block';
+
+    showChat();
+    connectWebSocket();
+
+    if (CONFIG.msgsUrl) loadHistory();
+
+  } catch (e) {
+    setMsg(msg, e.message || 'Login failed.', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Login →';
+  }
+}
+
+// ── WEBSOCKET ──────────────────────────────────────────────────────────────
+function connectWebSocket() {
+  setConnStatus('connecting', 'connecting...');
+
+  ws = new WebSocket(`${CONFIG.wsUrl}?token=${token}`);
+
+  ws.onopen = () => {
+    setConnStatus('live', 'connected');
+    document.getElementById('msg-input').disabled = false;
+    document.getElementById('send-btn').disabled = false;
+    addSysMsg('Connected to SIGNAL.', 'connected');
+    pingStart = Date.now();
+    // measure latency on first message echo
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.message) {
+      const isOwn = data.sender === currentUser;
+      addMessage(data.sender, data.message, data.timestamp, isOwn);
+      if (pingStart) {
+        document.getElementById('stat-latency').textContent = (Date.now() - pingStart) + 'ms';
+        pingStart = null;
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    setConnStatus('error', 'disconnected');
+    document.getElementById('msg-input').disabled = true;
+    document.getElementById('send-btn').disabled = true;
+    addSysMsg('Connection closed. Refresh to reconnect.', 'disconnected');
+  };
+
+  ws.onerror = () => {
+    setConnStatus('error', 'error');
+    addSysMsg('WebSocket error. Check config.', 'disconnected');
+  };
+}
+
+// ── SEND MESSAGE ───────────────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text  = input.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+  pingStart = Date.now();
+  ws.send(JSON.stringify({ action: 'sendMessage', message: text }));
+  input.value = '';
+  updateCharCount('');
+}
+
+// ── LOAD HISTORY ───────────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const res  = await fetch(CONFIG.msgsUrl);
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return;
+
+    addDivider('earlier messages');
+    data.forEach(m => {
+      addMessage(m.email || m.userId, m.message, m.timestamp, m.email === currentUser);
+    });
+    addDivider('live');
+  } catch (e) {
+    console.warn('History load failed:', e);
+  }
+}
+
+// ── UI HELPERS ─────────────────────────────────────────────────────────────
+function showChat() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('chat-screen').style.display = 'flex';
+}
+
+function logout() {
+  if (ws) ws.close();
+  ws = null; token = null; currentUser = null; msgCount = 0;
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('chat-screen').style.display = 'none';
+  document.getElementById('user-badge').style.display  = 'none';
+  document.getElementById('logout-btn').style.display  = 'none';
+  document.getElementById('messages').innerHTML = `
+    <div id="empty-state">
+      <div class="empty-icon">⌨</div>
+      <div class="empty-title">No messages yet.</div>
+      <div class="empty-sub">Be the first to say something.</div>
+    </div>`;
+  document.getElementById('stat-msgs').textContent = '0';
+  document.getElementById('stat-latency').textContent = '—';
+  setConnStatus('', 'offline');
+  switchTab('login');
+  document.getElementById('login-btn').disabled = false;
+  document.getElementById('login-btn').textContent = 'Login →';
+}
+
+function addMessage(sender, text, ts, isOwn) {
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  msgCount++;
+  document.getElementById('stat-msgs').textContent = msgCount;
+
+  const time = ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'now';
+  const initials = (sender || '?')[0].toUpperCase();
+
+  const div = document.createElement('div');
+  div.className = `msg ${isOwn ? 'own' : ''}`;
+  div.innerHTML = `
+    <div class="msg-avatar">${initials}</div>
+    <div class="msg-body">
+      <div class="msg-meta">
+        <span class="msg-sender">${escHtml(sender)}</span>
+        <span class="msg-time">${time}</span>
+      </div>
+      <div class="msg-text">${escHtml(text)}</div>
+    </div>`;
+
+  const msgs = document.getElementById('messages');
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addSysMsg(text, cls = '') {
+  const div = document.createElement('div');
+  div.className = `sys-msg ${cls}`;
+  div.textContent = text;
+  const msgs = document.getElementById('messages');
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addDivider(label) {
+  const div = document.createElement('div');
+  div.className = 'msg-divider';
+  div.textContent = label;
+  document.getElementById('messages').appendChild(div);
+}
+
+function setConnStatus(state, label) {
+  const dot = document.getElementById('conn-dot');
+  const txt = document.getElementById('conn-status');
+  dot.className = `conn-dot ${state}`;
+  txt.textContent = label;
+}
+
+function setMsg(el, text, type) {
+  el.textContent = text;
+  el.className   = `auth-msg ${type}`;
+}
+
+function checkConfig() {
+  if (!CONFIG.wsUrl || !CONFIG.clientId || !CONFIG.poolId) {
+    toast('Configure your AWS endpoints first (⚙).', 'error');
+    openConfig();
+    return false;
+  }
+  return true;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function toast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `show ${type}`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = type; }, 3000);
+}
+
+function updateCharCount(val) {
+  const cc = document.getElementById('char-count');
+  const len = val.length;
+  if (len === 0) { cc.textContent = ''; return; }
+  cc.textContent = `${len}/500`;
+  cc.className   = len > 450 ? 'warn' : '';
+}
+
+// ── EVENT LISTENERS ────────────────────────────────────────────────────────
+document.getElementById('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+document.getElementById('msg-input').addEventListener('input', e => {
+  updateCharCount(e.target.value);
+});
+
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+});
+
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-password').focus();
+});
+
+// init region display
+document.getElementById('stat-region').textContent = CONFIG.region || '—';
+
+// auto-open config if nothing is set
+if (!CONFIG.wsUrl) {
+  setTimeout(openConfig, 400);
+}
+</script>
+</body>
+</html>
