@@ -4,7 +4,7 @@ import time
 
 TABLE_NAME = os.environ.get('TABLE_NAME')
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(TABLE_NAME)
+table = dynamodb.Table(TABLE_NAME)#
 
 
 def lambda_handler(event, context):

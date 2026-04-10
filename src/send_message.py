@@ -3,7 +3,7 @@ import time
 import boto3
 import os
 from boto3.dynamodb.conditions import Key
-from rate_limiter import check_rate_limit  # Your Token Bucket logic
+from rate_limiter import check_rate_limit  # Token Bucket logic
 
 # Initialize outside handler for speed
 dynamodb = boto3.resource('dynamodb')
@@ -23,7 +23,7 @@ def lambda_handler(event, context):
     if not check_rate_limit(user_id):
         return {'statusCode': 429, 'body': 'Too many messages!'}
 
-    # 3. PARSE MESSAGE
+
     try:
         body = json.loads(event.get('body', '{}'))
         message = body.get('message', '')

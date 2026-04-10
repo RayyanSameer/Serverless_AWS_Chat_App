@@ -17,22 +17,25 @@ import json
 import time
 import urllib.request
 from jose import jwt
-from decimal import Decimal
 
-_jwks_cache = None
-_jwks_cache_time = 0
-CACHE_TTL = 3600
 
-EGION = os.environ.get('AWS_REGION')
+#imports 
+
+_jwks_cache = None 
+_jwks_cache_time = 0  
+CACHE_TTL = 3600 #1 hour cache for JWKS
+
+REGION = os.environ.get('AWS_REGION')
 USER_POOL_ID = os.environ.get('USER_POOL_ID')
 APP_CLIENT_ID = os.environ.get('APP_CLIENT_ID')
 JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
 
+#
 def get_jwks():
     global _jwks_cache, _jwks_cache_time
     now = time.time()
 
-    if _jwks_cache is None or (now - _jwks_cache_time)> CACHE_TTL:
+    if _jwks_cache is None or (now - _jwks_cache_time) > CACHE_TTL:
         print("Fetching new JWKS")
         try:
             with urllib.request.urlopen(JWKS_URL) as response:
@@ -41,35 +44,34 @@ def get_jwks():
         except Exception as e:
             print(f"Error fetching JWKS: {e}")
             return None
-        return _jwks_cache
-    raise Exception("Failed to fetch JWKS")
 
+    return _jwks_cache  
         
 
 
 
-def verify_token(token):
+def verify_token(token): #function to vrify token
     try:
-        jwks = get_jwks()
-        headers = jwt.get_unverified_headers(token)
-        kid = headers['kid']
-        key = next((k for k in jwks['keys'] if k['kid'] == kid), None)
+        jwks = get_jwks() #get the JWKS
+        headers = jwt.get_unverified_headers(token) #get the headers from the token without verifying it (to get the kid)
+        kid = headers['kid'] #get the key ID from the headers
+        key = next((k for k in jwks['keys'] if k['kid'] == kid), None) #find the key in the JWKS that matches the kid from the token
         if not key:
             return None
-        claims = jwt.decode(token, key, algorithms=['RS256'], audience=APP_CLIENT_ID)
+        claims = jwt.decode(token, key, algorithms=['RS256'], audience=APP_CLIENT_ID) #decode and verify the token using the key, the expected algorithm, and the expected audience (app client ID)
         if claims.get('token_use') not in ('id', 'access'):
             return None
         return claims
     except Exception as e:
-        print(f"Token verification failed: {e}")
+        print(f"Token verification failed: {e}") 
         return None
 
 
-def lambda_handler(event, context):
+def lambda_handler(event, context): #Entry point of lambda func 
     print(f"Auth event received for route: {event.get('requestContext', {}).get('routeKey')}")
 
     method_arn = event.get('methodArn', '')
-    qsp = event.get('queryStringParameters') or {}
+    qsp = event.get('queryStringParameters') or {} 
     token = qsp.get('token') or event.get('token')
 
     claims = verify_token(token) if token else None
