@@ -15,18 +15,17 @@ dynamodb = boto3.resource('dynamodb')
 msg_table = dynamodb.Table(MESSAGES_TABLE)
 
 def lambda_handler(event, context):
-    all_messages = []
-    response = msg_table.scan()
-    
-    while True:
-        all_messages.extend(response.get('Items', []))
-        
-        if 'LastEvaluatedKey' not in response:
-            break
-        
-        response = msg_table.scan(
-            ExclusiveStartKey=response['LastEvaluatedKey']
-        )
-    
-    all_messages.sort(key=lambda x: x['timestamp'])
-    return {'statusCode': 200, 'body': json.dumps(all_messages)}
+    user_id = event['requestContext']['authorizer']['userId'] # Get the last evaluated key from the query parameters
+
+    response = msg_table.query(
+        IndexName="UserIdIndex",
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('userId').eq(user_id),
+        ScanForward=False,
+        Limit=40
+    )
+
+    messages = response.get('Items', [])
+    return {
+        'statusCode': 200,
+        'body': json.dumps(messages)
+    }

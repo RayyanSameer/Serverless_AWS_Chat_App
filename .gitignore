@@ -4,6 +4,7 @@ aws-sam-cli-src/
 sam-installation/
 aws-sam-cli.zip
 dist/
+response.json
 
 # OS/System files
 .DS_Store

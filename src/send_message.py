@@ -3,64 +3,78 @@ import time
 import boto3
 import os
 from boto3.dynamodb.conditions import Key
+from rate_limiter import check_rate_limit  # Your Token Bucket logic
 
+# Initialize outside handler for speed
 dynamodb = boto3.resource('dynamodb')
 conn_table = dynamodb.Table(os.environ.get('TABLE_NAME'))
 
 def lambda_handler(event, context):
-    # Parse incoming WebSocket message
-    body = json.loads(event.get('body', '{}'))
-    message = body.get('message', '')
 
-    # Extract caller identity
-    request_context = event.get('requestContext', {})
-    user_id = request_context.get('connectionId')
-    authorizer = request_context.get('authorizer', {})
-    email = authorizer.get('email')
+    req_context = event.get('requestContext', {})
+    connection_id = req_context.get('connectionId')
+    
 
-    # Build API Gateway Management client
-    domain = request_context['domainName']
-    stage = request_context['stage']
+    authorizer = req_context.get('authorizer', {})
+    user_id = authorizer.get('userId', connection_id)
+    email = authorizer.get('email', 'Anonymous')
+
+
+    if not check_rate_limit(user_id):
+        return {'statusCode': 429, 'body': 'Too many messages!'}
+
+    # 3. PARSE MESSAGE
+    try:
+        body = json.loads(event.get('body', '{}'))
+        message = body.get('message', '')
+    except Exception:
+        return {'statusCode': 400, 'body': 'Invalid JSON format'}
+
+    if not message:
+        return {'statusCode': 200} # Nothing to broadcast
+
+    
     gateway = boto3.client(
         'apigatewaymanagementapi',
-        endpoint_url=f'https://{domain}/{stage}'
+        endpoint_url=f"https://{req_context['domainName']}/{req_context['stage']}"
     )
 
-    # Paginated scan  collect ALL active connection IDs
-    all_connections = []
-    response = conn_table.scan(ProjectionExpression='connectionId')
+    online_users = []
+    query_params = {
+        'IndexName': 'StatusIndex',
+        'KeyConditionExpression': Key('status').eq('online'),
+        'ProjectionExpression': 'connectionId'
+    }
 
     while True:
-        all_connections.extend(response.get('Items', []))
+        response = conn_table.query(**query_params)
+        online_users.extend(response.get('Items', []))
         if 'LastEvaluatedKey' not in response:
             break
-        response = conn_table.scan(
-            ProjectionExpression='connectionId',
-            ExclusiveStartKey=response['LastEvaluatedKey']
-        )
+        query_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
-    # Build broadcast payload
+   
     payload = json.dumps({
-        'sender': email or user_id,
+        'sender': email,
         'message': message,
         'timestamp': int(time.time())
     })
 
-    # Broadcast to all connections, track stale ones
-    stale = []
-    for conn in all_connections:
-        target_id = conn['connectionId']
+    stale_ids = []
+    for user in online_users:
+        target_id = user['connectionId']
         try:
             gateway.post_to_connection(ConnectionId=target_id, Data=payload)
         except gateway.exceptions.GoneException:
-            stale.append(target_id)
+      
+            stale_ids.append(target_id)
         except Exception as e:
             print(f"Failed to send to {target_id}: {e}")
 
-    # Clean up disconnected clients
-    for stale_id in stale:
-        conn_table.delete_item(Key={'connectionId': stale_id})
-        print(f"Cleaned stale connection: {stale_id}")
 
-    print(f"Message from {user_id} | sent to {len(all_connections)} | cleaned {len(stale)} stale")
-    return {'statusCode': 200, 'body': 'Message sent.'}
+    if stale_ids:
+        with conn_table.batch_writer() as batch:
+            for sid in stale_ids:
+                batch.delete_item(Key={'connectionId': sid})
+
+    return {'statusCode': 200, 'body': 'Sent.'}

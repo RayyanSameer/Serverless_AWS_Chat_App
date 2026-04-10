@@ -1,18 +1,9 @@
 
 
-import os
-import json
-import urllib.request
-from jose import jwk, jwt
-
 
 _jwks_cache = None #Module Level var :) 
 
 
-REGION = os.environ['AWS_REGION']
-USER_POOL_ID = os.environ['USER_POOL_ID']
-APP_CLIENT_ID = os.environ['APP_CLIENT_ID']
-JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
 
 #This is the meat of the authentication logic 
 # it starts by caching the jwk as a global varaiable 
@@ -21,15 +12,39 @@ JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-kno
 #When someone tries to connect to the chat, they hand over a JWT token. This file checks if that token is real and valid. If yes  Allow. If no — Deny. That's it.
 
 
+import os
+import json
+import time
+import urllib.request
+from jose import jwt
+from decimal import Decimal
+
+_jwks_cache = None
+_jwks_cache_time = 0
+CACHE_TTL = 3600
+
+EGION = os.environ.get('AWS_REGION')
+USER_POOL_ID = os.environ.get('USER_POOL_ID')
+APP_CLIENT_ID = os.environ.get('APP_CLIENT_ID')
+JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
+
 def get_jwks():
-    global _jwks_cache
-    if _jwks_cache == None:
-        with urllib.request.urlopen     (JWKS_URL) as response:
-            jwk =  json.loads(response.read())
-            _jwks_cache= jwk
-            return _jwks_cache
-    else:
-        return _jwks_cache    
+    global _jwks_cache, _jwks_cache_time
+    now = time.time()
+
+    if _jwks_cache is None or (now - _jwks_cache_time)> CACHE_TTL:
+        print("Fetching new JWKS")
+        try:
+            with urllib.request.urlopen(JWKS_URL) as response:
+                _jwks_cache = json.loads(response.read())
+                _jwks_cache_time = now
+        except Exception as e:
+            print(f"Error fetching JWKS: {e}")
+            return None
+        return _jwks_cache
+    raise Exception("Failed to fetch JWKS")
+
+        
 
 
 
