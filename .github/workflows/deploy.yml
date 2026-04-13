@@ -1,0 +1,55 @@
+name: ChatApp-CI-CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+        
+jobs:
+  buid-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v3
+              
+      - name: Setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+                
+      - name: Setup SAM
+        uses: aws-actions/setup-sam@v2
+            
+      - name: SAM Validate
+        run: sam validate --lint
+            
+      - name: SAM Build
+        run: sam build 
+        
+  deploy:
+    needs: buid-validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+         
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActions
+          aws-region: us-east-1
+
+      - name: SAM Deploy
+        run: |
+          sam deploy \
+            --stack-name chatapp-prod \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
